@@ -7,7 +7,7 @@ import os
 from translations import LANGUAGES, get_text
 
 # ==========================================
-# 1. CONFIGURATION & STYLING
+# 1. CONFIGURATION
 # ==========================================
 st.set_page_config(
     page_title="FarmFin Assist | NABARD 2025",
@@ -15,46 +15,25 @@ st.set_page_config(
     layout="wide"
 )
 
-# Custom CSS
+# Custom Styling
 st.markdown("""
     <style>
     .main { background-color: #f0f8f5; }
-    
-    /* Green buttons for normal actions */
     div.stButton > button:first-child {
-        background-color: #2e7d32;
-        color: white;
-        border-radius: 8px;
-        border: none;
+        background-color: #2e7d32; color: white; border-radius: 8px; border: none;
     }
-    
-    /* RED buttons for RESET (We use type='primary' in Streamlit for these) */
     div.stButton > button[kind="primary"] {
-        background-color: #d32f2f !important;
-        color: white !important;
-        border: 1px solid #b71c1c !important;
-    }
-    
-    div.stButton > button:hover {
-        opacity: 0.9;
-    }
-    
-    .metric-card {
-        background-color: white; padding: 20px; border-radius: 10px;
-        box-shadow: 2px 2px 10px rgba(0,0,0,0.1); text-align: center;
+        background-color: #d32f2f !important; color: white !important;
     }
     h1, h2, h3 { color: #1b5e20; font-family: 'Sans-serif'; }
     </style>
     """, unsafe_allow_html=True)
 
 # ==========================================
-# 2. SESSION STATE
+# 2. STATE & HELPERS
 # ==========================================
 def get_defaults():
-    return {
-        'name': '', 'land': 0.0, 'crop': 'Wheat', 
-        'district': '', 'income': 0, 'expenses': 0, 'emi': 0
-    }
+    return {'name': '', 'land': 0.0, 'crop': 'Wheat', 'district': '', 'income': 0, 'expenses': 0, 'emi': 0}
 
 if 'farmer_data' not in st.session_state:
     st.session_state.farmer_data = get_defaults()
@@ -65,35 +44,26 @@ if 'lang_code' not in st.session_state:
 def t(key):
     return get_text(st.session_state.lang_code, key)
 
-def get_current_season():
+def get_season_text():
     month = datetime.datetime.now().month
-    if month >= 10 or month <= 3:
-        return "Rabi (Wheat/Mustard)"
-    elif 4 <= month <= 5:
-        return "Zaid (Vegetables)"
-    else:
-        return "Kharif (Rice/Maize)"
+    if month >= 10 or month <= 3: return t('season_rabi')
+    elif 4 <= month <= 5: return t('season_zaid')
+    else: return t('season_kharif')
 
 # ==========================================
-# 3. SIDEBAR & NAVIGATION
+# 3. SIDEBAR
 # ==========================================
 def sidebar_menu():
     st.sidebar.title("🌍 Language / भाषा")
-    
     lang_names = list(LANGUAGES.keys())
-    default_index = lang_names.index('English')
-    
-    selected_lang_name = st.sidebar.selectbox(
-        "Choose Interface Language",
-        lang_names,
-        index=default_index
-    )
-    st.session_state.lang_code = LANGUAGES[selected_lang_name]
+    # Default to English index 0
+    selected = st.sidebar.selectbox("Select", lang_names, index=0)
+    st.session_state.lang_code = LANGUAGES[selected]
     
     st.sidebar.markdown("---")
     st.sidebar.title(t('title'))
     
-    menu_options = {
+    options = {
         "Home": t('nav_home'),
         "Profile": t('nav_profile'),
         "Health": t('nav_health'),
@@ -101,61 +71,44 @@ def sidebar_menu():
         "Calculator": t('nav_calc'),
         "Report": t('nav_report')
     }
-    
-    selection = st.sidebar.radio("Go to:", list(menu_options.keys()), format_func=lambda x: menu_options[x])
-    return selection
+    return st.sidebar.radio("Menu", list(options.keys()), format_func=lambda x: options[x])
 
 # ==========================================
 # 4. LOGIC
 # ==========================================
-def calculate_metrics(income, expenses, monthly_emi):
-    yearly_emi = monthly_emi * 12
-    net_income = income - expenses
-    
-    dscr = 0
-    if yearly_emi > 0:
-        dscr = round(net_income / yearly_emi, 2)
-    elif net_income > 0:
-        dscr = 10.0 
-    else:
-        dscr = 0.0
-        
+def calculate_metrics(inc, exp, emi):
+    yearly_emi = emi * 12
+    net = inc - exp
+    dscr = round(net / yearly_emi, 2) if yearly_emi > 0 else (10.0 if net > 0 else 0.0)
     score = 600
     if dscr > 1.5: score += 100
     elif dscr < 1.0: score -= 100
     if st.session_state.farmer_data['land'] > 2: score += 50
-    
     return dscr, min(900, max(300, score))
 
 # ==========================================
 # 5. PAGES
 # ==========================================
 def page_home():
-    # MINIMALIST IMAGE LAYOUT
-    # We use columns to center the image and restrict its width.
-    # [1, 2, 1] means: 25% empty | 50% Image | 25% empty
+    # Image Logic
     img_files = ["farm_header.jpg", "farm_header.jpg.jpg", "farm_header.jpeg"]
     loaded = False
-    
-    col_spacer_left, col_image, col_spacer_right = st.columns([1, 2, 1])
-
-    with col_image:
+    col_l, col_img, col_r = st.columns([1, 2, 1])
+    with col_img:
         for img in img_files:
             if os.path.exists(img):
                 st.image(img, use_container_width=True)
                 loaded = True
                 break
-        if not loaded:
-            st.warning("⚠️ Header image not found. Please ensure 'farm_header.jpg' is in the folder.")
-
+    
     st.title(t('title'))
     st.subheader(t('subtitle'))
     st.info(t('intro'))
     
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Supported Languages", "22")
-    col2.metric(t('metric_interest'), "~7% (KCC)")
-    col3.metric(t('metric_season'), get_current_season())
+    c1, c2, c3 = st.columns(3)
+    c1.metric(t('sup_lang'), "22")
+    c2.metric(t('metric_interest'), "~7% (KCC)")
+    c3.metric(t('metric_season'), get_season_text())
 
 def page_profile():
     st.header(t('nav_profile'))
@@ -166,13 +119,14 @@ def page_profile():
             land = st.number_input(t('land_size'), min_value=0.0, value=float(st.session_state.farmer_data['land']))
         with c2:
             district = st.text_input(t('district'), st.session_state.farmer_data['district'])
+            # Crops are hard to translate dynamically without a massive dict, keeping English for stability
             crop = st.selectbox(t('crop_type'), ["Wheat", "Rice", "Cotton", "Sugarcane", "Maize"])
-            
+        
         if st.form_submit_button(t('save_btn')):
             st.session_state.farmer_data.update({'name': name, 'land': land, 'district': district, 'crop': crop})
             st.success("✅ Saved!")
 
-    if st.button(t('reset_btn'), type="primary", key="reset_profile"):
+    if st.button(t('reset_btn'), type="primary"):
         st.session_state.farmer_data = get_defaults()
         st.rerun()
 
@@ -191,45 +145,45 @@ def page_health():
         
         st.divider()
         m1, m2 = st.columns(2)
-        m1.metric(t('dscr_score'), dscr, delta="> 1.25 Good")
+        m1.metric(t('dscr_score'), dscr)
         m2.metric(t('credit_score'), score)
         
-        if dscr < 1.0: st.error(t('risk_high'))
-        else: st.success(t('risk_safe'))
+        if dscr < 1.0: 
+            st.error(t('risk_high'))
+            st.write(t('health_tip_bad'))
+        else: 
+            st.success(t('risk_safe'))
+            st.write(t('health_tip_good'))
             
         fig, ax = plt.subplots()
-        ax.bar(['Income', 'Expenses'], [inc, exp], color=['#4CAF50', '#d32f2f'])
+        ax.bar(['Inc', 'Exp'], [inc, exp], color=['#4CAF50', '#d32f2f'])
         st.pyplot(fig)
 
     st.markdown("---")
     if st.button(t('reset_btn'), type="primary", key="reset_health"):
         st.session_state.farmer_data['income'] = 0
-        st.session_state.farmer_data['expenses'] = 0
-        st.session_state.farmer_data['emi'] = 0
         st.rerun()
 
 def page_schemes():
     st.header(t('nav_schemes'))
-    st.markdown("""
-    ### 🏦 Government Schemes
-    1. **Kisan Credit Card (KCC)**: Get loans at ~7% interest for crops.
-    2. **PM Fasal Bima Yojana**: Crop insurance for failure due to weather.
-    3. **Palan Yojana**: Subsidies for Dairy/Poultry farming.
-    """)
+    st.markdown(f"### {t('scheme_title')}")
+    st.markdown(t('scheme_1'))
+    st.markdown(t('scheme_2'))
+    st.markdown(t('scheme_3'))
 
 def page_calculator():
     st.header(t('nav_calc'))
     c1, c2 = st.columns(2)
-    area = c1.number_input("Area (Acres)", 1.0, key="c_area")
-    yield_val = c2.number_input("Yield (Quintals/Acre)", 20.0, key="c_yield")
-    price = c1.number_input("Market Price (₹/Quintal)", 2000.0, key="c_price")
-    cost = c2.number_input("Cost (₹/Acre)", 15000.0, key="c_cost")
+    area = c1.number_input(t('calc_area'), 1.0)
+    yield_val = c2.number_input(t('calc_yield'), 20.0)
+    price = c1.number_input(t('calc_price'), 2000.0)
+    cost = c2.number_input(t('calc_cost'), 15000.0)
     
-    if st.button("Calculate Profit"):
+    if st.button(t('calc_run')):
         profit = (area * yield_val * price) - (area * cost)
-        st.metric("Estimated Profit", f"₹ {profit:,.2f}")
-        if profit > 0: st.success("Profitable")
-        else: st.error("Loss Making")
+        st.metric(t('est_profit'), f"₹ {profit:,.2f}")
+        if profit > 0: st.success(t('res_profit'))
+        else: st.error(t('res_loss'))
         
     st.markdown("---")
     if st.button(t('reset_btn'), type="primary", key="reset_calc"):
@@ -245,9 +199,9 @@ def page_report():
         pdf.line(10, 20, 200, 20)
         pdf.set_font("Arial", size=12)
         pdf.ln(20)
+        # We keep report text in English/Latin to avoid Font errors in PDF generation
         pdf.cell(200, 10, txt=f"Name: {st.session_state.farmer_data['name']}", ln=1)
         pdf.cell(200, 10, txt=f"District: {st.session_state.farmer_data['district']}", ln=1)
-        
         pdf.output("report.pdf")
         with open("report.pdf", "rb") as f:
             st.download_button(t('download_pdf'), f, file_name="Farmer_Report.pdf")
